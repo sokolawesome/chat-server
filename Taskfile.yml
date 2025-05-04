@@ -1,0 +1,76 @@
+version: "3"
+
+dotenv: [".env"]
+
+vars:
+  APP_NAME: server
+  MAIN_PATH: ./cmd/server
+  DOCKER_IMG_NAME: chat-server
+
+tasks:
+  default:
+    cmds:
+      - task: help
+    silent: true
+
+  help:
+    desc: "Shows available tasks"
+    cmds:
+      - task --list-all
+
+  deps:
+    desc: "Tidy Go module dependencies"
+    cmds:
+      - go mod tidy
+      - go mod vendor
+
+  build:
+    desc: "Build the Go application binary"
+    cmds:
+      - go build -ldflags="-w -s" -o bin/{{.APP_NAME}} {{.MAIN_PATH}}
+    sources:
+      - ./**/*.go
+      - go.mod
+    generates:
+      - bin/{{.APP_NAME}}
+
+  run:
+    desc: "Run the Go application locally (needs .env)"
+    deps: [build]
+    cmds:
+      - ./bin/{{.APP_NAME}}
+
+  lint:
+    desc: "Run golangci-lint"
+    cmds:
+      - golangci-lint run ./... --timeout 5m
+
+  docker:build:
+    desc: "Build the Docker image for the server"
+    cmds:
+      - docker build -t {{.DOCKER_IMG_NAME}}:latest .
+
+  docker:up:
+    desc: "Start services defined in docker-compose.yml"
+    cmds:
+      - docker-compose up -d --build
+
+  docker:down:
+    desc: "Stop and remove services defined in docker-compose.yml"
+    cmds:
+      - docker-compose down
+
+  docker:logs:
+    desc: "Tail logs from docker-compose services"
+    cmds:
+      - docker-compose logs -f
+
+  docker:db:connect:
+    desc: "Connect to the running PostgreSQL container using psql"
+    cmds:
+      - docker exec -it chat_db psql -U {{.POSTGRES_USER}} -d {{.POSTGRES_DB}}
+
+  dev:
+    desc: "Build and start docker containers (docker:up)"
+    cmds:
+      - task: docker:up
