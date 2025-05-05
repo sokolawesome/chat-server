@@ -70,6 +70,15 @@ tasks:
     cmds:
       - docker exec -it chat_db psql -U {{.POSTGRES_USER}} -d {{.POSTGRES_DB}}
 
+  docker:db:migrate:up:manual:
+    desc: "Apply SQL schema manually via psql"
+    cmds:
+      - |
+        echo "Applying schema from sql/schema/*.sql ..."
+        cat sql/schema/*.sql | docker exec -i chat_db psql -U {{.POSTGRES_USER}} -d {{.POSTGRES_DB}}
+    deps:
+      - task: docker:up
+
   dev:
     desc: "Build and start docker containers (docker:up)"
     cmds:

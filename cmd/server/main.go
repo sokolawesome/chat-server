@@ -3,11 +3,14 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/joho/godotenv"
+	"github.com/sokolawesome/chat-server/config"
+	"github.com/sokolawesome/chat-server/internal/database"
+	"github.com/sokolawesome/chat-server/internal/handlers"
+	"github.com/sokolawesome/chat-server/internal/repository"
+	"github.com/sokolawesome/chat-server/internal/router"
 )
 
 var upgrader = websocket.Upgrader{
@@ -59,30 +62,31 @@ func handleWebSocket(ctx *gin.Context) {
 }
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Printf(".env file not loaded: %v", err)
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to load configuration: %v", err)
 	}
 
-	port := os.Getenv("SERVER_PORT")
-	if port == "" {
-		port = "8080"
+	db, err := database.Connect(cfg.DatabaseUrl)
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	log.Println("starting server on port", port)
+	defer func() {
+		log.Println("closing database connection pool...")
+		if err := db.Close(); err != nil {
+			log.Printf("error closing database connection: %v", err)
+		}
+	}()
 
-	router := gin.Default()
+	userRepository := repository.NewUserRepository(db)
+	authHandler := handlers.NewAuthHandler(userRepository)
+	ginRouter := router.SetupRouter(authHandler)
 
-	router.GET("/", func(ctx *gin.Context) {
-		ctx.JSON(http.StatusOK, gin.H{
-			"message": "Chat server is running!",
-		})
-	})
+	ginRouter.GET("/ws", handleWebSocket)
 
-	router.GET("/ws", handleWebSocket)
-
-	log.Printf("server listening on http://localhost:%s", port)
-
-	if err := router.Run(":" + port); err != nil {
+	log.Printf("server listening on http://localhost:%s", cfg.ServerPort)
+	if err := ginRouter.Run(":" + cfg.ServerPort); err != nil {
 		log.Fatalf("failed to start server: %v", err)
 	}
 }
