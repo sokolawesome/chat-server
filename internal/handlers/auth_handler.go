@@ -123,11 +123,11 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 
 	log.Printf("User %d (%s) logged in successfully", user.ID, user.Username)
 
-	respone := LoginResponse{
+	response := LoginResponse{
 		Token:    tokenSigned,
 		User:     user,
 		Username: user.Username,
 	}
 
-	ctx.JSON(http.StatusOK, respone)
+	ctx.JSON(http.StatusOK, response)
 }

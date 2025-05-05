@@ -19,7 +19,7 @@ func Load() (*Config, error) {
 		ServerPort:        getEnv("SERVER_PORT", "8080"),
 		DatabaseUrl:       getEnv("DATABASE_URL", ""),
 		JwtSecret:         getEnv("JWT_SECRET", ""),
-		JwtExpirationTime: time.Duration(getEnvAsInt("JWT_EXPIRATION_MINUTES", 60)),
+		JwtExpirationTime: time.Duration(getEnvAsInt("JWT_EXPIRATION_MINUTES", 60)) * time.Minute,
 	}
 
 	if cfg.DatabaseUrl == "" {

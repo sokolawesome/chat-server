@@ -46,7 +46,48 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 
 		accessToken := fields[1]
 		token, err := jwt.Parse(accessToken, func(t *jwt.Token) (interface{}, error) {
-
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(jwtSecret), nil
 		})
+
+		if err != nil {
+			log.Printf("jwt parsing/validation error: %v", err)
+			errMsg := "invalid token"
+			if errors.Is(err, jwt.ErrTokenExpired) {
+				errMsg = "token has expired"
+			}
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": errMsg})
+			return
+		}
+
+		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+			userIdF64, okSub := claims["sub"].(float64)
+			username, okUsr := claims["usr"].(string)
+			if !okSub {
+				err := errors.New("invalid token: missing or invalid userid (sub) claim")
+				log.Println("auth error:", err)
+				ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token payload"})
+				return
+			}
+			if !okUsr {
+				err := errors.New("invalid token: missing or invalid username (usr) claim")
+				log.Println("auth error:", err)
+				ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token payload"})
+				return
+			}
+
+			userId := int64(userIdF64)
+
+			ctx.Set(AuthorizationPayloadKey, userId)
+
+			log.Printf("auth success: user %d (%s) authorized", userId, username)
+
+			ctx.Next()
+		} else {
+			log.Println("auth error: invalid token (claims invalid or token marked invalid)")
+			ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		}
 	}
 }

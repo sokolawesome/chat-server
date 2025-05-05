@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/sokolawesome/chat-server/config"
 	"github.com/sokolawesome/chat-server/internal/database"
@@ -22,7 +25,50 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-func handleWebSocket(ctx *gin.Context) {
+func handleWebSocket(ctx *gin.Context, cfg *config.Config) {
+	tokenString := ctx.Query("token")
+	if tokenString == "" {
+		log.Println("missing token in query parameters")
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authentication token"})
+		ctx.Abort()
+		return
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(cfg.JwtSecret), nil
+	})
+
+	if err != nil {
+		log.Printf("jwt parsing/validation error: %v", err)
+		errMsg := "invalid or expired token"
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			errMsg = "token has expired"
+		}
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": errMsg})
+		ctx.Abort()
+		return
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		userIdF64, okSub := claims["sub"].(float64)
+		if !okSub {
+			log.Println("invalid token payload (missing/invalid sub claim)")
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token payload"})
+			ctx.Abort()
+			return
+		}
+		userId := int64(userIdF64)
+		log.Printf("user %d authorized for websocket connection", userId)
+	} else {
+		log.Println("invalid token (claims invalid or token marked invalid)")
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+		ctx.Abort()
+		return
+	}
+
 	conn, err := upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		log.Printf("failded to upgrade connection from %s: %v", ctx.Request.RemoteAddr, err)
@@ -80,10 +126,12 @@ func main() {
 	}()
 
 	userRepository := repository.NewUserRepository(db)
-	authHandler := handlers.NewAuthHandler(userRepository)
-	ginRouter := router.SetupRouter(authHandler)
+	authHandler := handlers.NewAuthHandler(userRepository, cfg.JwtSecret, cfg.JwtExpirationTime)
+	ginRouter := router.SetupRouter(cfg, authHandler)
 
-	ginRouter.GET("/ws", handleWebSocket)
+	ginRouter.GET("/ws", func(ctx *gin.Context) {
+		handleWebSocket(ctx, cfg)
+	})
 
 	log.Printf("server listening on http://localhost:%s", cfg.ServerPort)
 	if err := ginRouter.Run(":" + cfg.ServerPort); err != nil {
