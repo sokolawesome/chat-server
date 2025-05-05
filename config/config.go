@@ -3,19 +3,23 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
+	"time"
 )
 
 type Config struct {
-	ServerPort  string
-	DatabaseUrl string
-	JwtSecret   string
+	ServerPort        string
+	DatabaseUrl       string
+	JwtSecret         string
+	JwtExpirationTime time.Duration
 }
 
 func Load() (*Config, error) {
 	cfg := Config{
-		ServerPort:  getEnv("SERVER_PORT", "8080"),
-		DatabaseUrl: getEnv("DATABASE_URL", ""),
-		JwtSecret:   getEnv("JWT_SECRET", ""),
+		ServerPort:        getEnv("SERVER_PORT", "8080"),
+		DatabaseUrl:       getEnv("DATABASE_URL", ""),
+		JwtSecret:         getEnv("JWT_SECRET", ""),
+		JwtExpirationTime: time.Duration(getEnvAsInt("JWT_EXPIRATION_MINUTES", 60)),
 	}
 
 	if cfg.DatabaseUrl == "" {
@@ -31,6 +35,15 @@ func Load() (*Config, error) {
 func getEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
+	}
+	return fallback
+}
+
+func getEnvAsInt(key string, fallback int) int {
+	if value, ok := os.LookupEnv(key); ok {
+		if value, err := strconv.Atoi(value); err == nil {
+			return value
+		}
 	}
 	return fallback
 }

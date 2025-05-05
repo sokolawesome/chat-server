@@ -1,19 +1,30 @@
 package handlers
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/sokolawesome/chat-server/internal/models"
 	"github.com/sokolawesome/chat-server/internal/repository"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
-	UserRepository repository.UserRepository
+	UserRepository    repository.UserRepository
+	JwtSecret         string
+	JwtExpirationTime time.Duration
 }
 
-func NewAuthHandler(userRepository repository.UserRepository) *AuthHandler {
-	return &AuthHandler{UserRepository: userRepository}
+func NewAuthHandler(userRepository repository.UserRepository, jwtSecret string, jwtExpirationTime time.Duration) *AuthHandler {
+	return &AuthHandler{
+		UserRepository:    userRepository,
+		JwtSecret:         jwtSecret,
+		JwtExpirationTime: jwtExpirationTime,
+	}
 }
 
 type RegisterRequest struct {
@@ -59,6 +70,12 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+type LoginResponse struct {
+	Token    string       `json:"token"`
+	User     *models.User `json:"user"`
+	Username string       `json:"username"`
+}
+
 func (h *AuthHandler) Login(ctx *gin.Context) {
 	var req LoginRequest
 
@@ -70,18 +87,47 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 
 	user, err := h.UserRepository.GetUserByUsername(ctx.Request.Context(), req.Username)
 	if err != nil {
+		if err == sql.ErrNoRows || user == nil {
+			log.Printf("user with username '%s' not found", req.Username)
+			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			return
+		}
 		log.Printf("error fetching user during login: %v", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Login failed"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Login failed due to server error"})
 		return
 	}
 
-	if user == nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+	if err = bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(req.Password)); err != nil {
+		log.Printf("password for user '%s' is invalid", req.Username)
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": "Login checked successfully",
-		"user_id": user.ID,
-	})
+	now := time.Now()
+	claims := jwt.MapClaims{
+		"iss": "chat-app",
+		"sub": user.ID,
+		"usr": user.Username,
+		"iat": now.Unix(),
+		"exp": now.Add(h.JwtExpirationTime).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	tokenSigned, err := token.SignedString([]byte(h.JwtSecret))
+	if err != nil {
+		log.Printf("error signing jwt for user %s: %v", user.Username, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+
+	log.Printf("User %d (%s) logged in successfully", user.ID, user.Username)
+
+	respone := LoginResponse{
+		Token:    tokenSigned,
+		User:     user,
+		Username: user.Username,
+	}
+
+	ctx.JSON(http.StatusOK, respone)
 }
