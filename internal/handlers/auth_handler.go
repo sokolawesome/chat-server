@@ -17,13 +17,15 @@ type AuthHandler struct {
 	UserRepository        repository.UserRepository
 	JwtSecret             string
 	JwtExpirationDuration time.Duration
+	JwtIssuer             string
 }
 
-func NewAuthHandler(userRepository repository.UserRepository, jwtSecret string, jwtExpirationDuration time.Duration) *AuthHandler {
+func NewAuthHandler(userRepository repository.UserRepository, jwtSecret string, jwtExpirationDuration time.Duration, jwtIssuer string) *AuthHandler {
 	return &AuthHandler{
 		UserRepository:        userRepository,
 		JwtSecret:             jwtSecret,
 		JwtExpirationDuration: jwtExpirationDuration,
+		JwtIssuer:             jwtIssuer,
 	}
 }
 
@@ -87,7 +89,7 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 
 	user, err := h.UserRepository.GetUserByUsername(ctx.Request.Context(), req.Username)
 	if err != nil {
-		if err == sql.ErrNoRows || user == nil {
+		if err == sql.ErrNoRows {
 			log.Printf("user with username '%s' not found", req.Username)
 			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
@@ -111,7 +113,7 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"iss": "chat-app",
+		"iss": h.JwtIssuer,
 		"sub": user.ID,
 		"usr": user.Username,
 		"iat": now.Unix(),

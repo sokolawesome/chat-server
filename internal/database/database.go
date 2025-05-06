@@ -3,22 +3,22 @@ package database
 import (
 	"database/sql"
 	"log"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/sokolawesome/chat-server/config"
 )
 
-func Connect(databaseUrl string) (*sql.DB, error) {
+func Connect(cfg *config.Config) (*sql.DB, error) {
 	log.Println("connecting to database...")
 
-	db, err := sql.Open("pgx", databaseUrl)
+	db, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
 	}
 
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetMaxOpenConns(cfg.DbMaxOpenConns)
+	db.SetMaxIdleConns(cfg.DbMaxIdleConns)
+	db.SetConnMaxLifetime(cfg.DbConnMaxLifetime)
 
 	if err = db.Ping(); err != nil {
 		db.Close()

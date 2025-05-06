@@ -16,16 +16,7 @@ import (
 	"github.com/sokolawesome/chat-server/internal/router"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		// proper origin check later
-		return true
-	},
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
-
-func handleWebSocket(ctx *gin.Context, cfg *config.Config) {
+func handleWebSocket(ctx *gin.Context, cfg *config.Config, wsUpgrader *websocket.Upgrader) {
 	tokenString := ctx.Query("token")
 	if tokenString == "" {
 		log.Println("missing token in query parameters")
@@ -69,7 +60,7 @@ func handleWebSocket(ctx *gin.Context, cfg *config.Config) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
+	conn, err := wsUpgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
 		log.Printf("failed to upgrade connection from %s: %v", ctx.Request.RemoteAddr, err)
 		return
@@ -110,12 +101,12 @@ func handleWebSocket(ctx *gin.Context, cfg *config.Config) {
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("failed to load configuration: %v", err)
+		log.Fatalf("FATAL: Failed to load configuration: %v", err)
 	}
 
-	db, err := database.Connect(cfg.DatabaseURL)
+	db, err := database.Connect(cfg)
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+		log.Fatalf("FATAL: Failed to connect to database: %v", err)
 	}
 
 	defer func() {
@@ -125,12 +116,20 @@ func main() {
 		}
 	}()
 
-	userRepository := repository.NewUserRepository(db)
-	authHandler := handlers.NewAuthHandler(userRepository, cfg.JwtSecret, cfg.JwtExpirationDuration)
+	userRepository := repository.NewUserRepository(db, cfg.BcryptCost)
+	authHandler := handlers.NewAuthHandler(userRepository, cfg.JwtSecret, cfg.JwtExpirationDuration, cfg.JwtIssuer)
 	ginRouter := router.SetupRouter(cfg, authHandler)
+	wsUpgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			// origin check later
+			return true
+		},
+		ReadBufferSize:  cfg.WsReadBufferSize,
+		WriteBufferSize: cfg.WsWriteBufferSize,
+	}
 
 	ginRouter.GET("/ws", func(ctx *gin.Context) {
-		handleWebSocket(ctx, cfg)
+		handleWebSocket(ctx, cfg, &wsUpgrader)
 	})
 
 	log.Printf("server listening on http://localhost:%s", cfg.ServerPort)

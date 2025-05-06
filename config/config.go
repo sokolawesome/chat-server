@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -12,24 +13,63 @@ type Config struct {
 	DatabaseURL           string
 	JwtSecret             string
 	JwtExpirationDuration time.Duration
+	JwtIssuer             string
+	DbMaxOpenConns        int
+	DbMaxIdleConns        int
+	DbConnMaxLifetime     time.Duration
+	BcryptCost            int
+	WsReadBufferSize      int
+	WsWriteBufferSize     int
 }
 
 func Load() (*Config, error) {
-	cfg := Config{
-		ServerPort:            getEnv("SERVER_PORT", "8080"),
-		DatabaseURL:           getEnv("DATABASE_URL", ""),
-		JwtSecret:             getEnv("JWT_SECRET", ""),
-		JwtExpirationDuration: time.Duration(getEnvAsInt("JWT_EXPIRATION_MINUTES", 60)) * time.Minute,
+	serverPort := getEnv("SERVER_PORT", "8080")
+	databaseURL := getEnv("DATABASE_URL", "")
+	jwtSecret := getEnv("JWT_SECRET", "")
+	jwtIssuer := getEnv("JWT_ISSUER", "chat-app")
+	jwtExpirationDuration, err := time.ParseDuration(getEnv("JWT_EXPIRATION_DURATION", "1h"))
+	if err != nil {
+		log.Printf("warning: could not parse JWT_EXPIRATION_DURATION '%s', using default 1h: %v", jwtExpirationDuration, err)
+		jwtExpirationDuration = time.Hour
+	}
+	dbMaxOpenConns := getEnvAsInt("DB_MAX_OPEN_CONNS", 10)
+	dbMaxIdleConns := getEnvAsInt("DB_MAX_IDLE_CONNS", 10)
+	dbConnMaxLifetime, err := time.ParseDuration(getEnv("DB_CONN_MAX_LIFETIME", "5m"))
+	if err != nil {
+		log.Printf("warning: could not parse DB_CONN_MAX_LIFETIME '%s', using default 5m: %v", dbConnMaxLifetime, err)
+		dbConnMaxLifetime = 5 * time.Minute
+	}
+	bcryptCost := getEnvAsInt("BCRYPT_COST", 12)
+	wsReadBufferSize := getEnvAsInt("WS_READ_BUFFER_SIZE", 1024)
+	wsWriteBufferSize := getEnvAsInt("WS_WRITE_BUFFER_SIZE", 1024)
+
+	cfg := &Config{
+		ServerPort:            serverPort,
+		DatabaseURL:           databaseURL,
+		JwtSecret:             jwtSecret,
+		JwtExpirationDuration: jwtExpirationDuration,
+		JwtIssuer:             jwtIssuer,
+		DbMaxOpenConns:        dbMaxOpenConns,
+		DbMaxIdleConns:        dbMaxIdleConns,
+		DbConnMaxLifetime:     dbConnMaxLifetime,
+		BcryptCost:            bcryptCost,
+		WsReadBufferSize:      wsReadBufferSize,
+		WsWriteBufferSize:     wsWriteBufferSize,
 	}
 
 	if cfg.DatabaseURL == "" {
-		log.Fatal("fatal: DATABASE_URL environment variable is required")
+		return nil, fmt.Errorf("config error: DATABASE_URL environment variable is required")
 	}
 	if cfg.JwtSecret == "" {
-		log.Fatal("fatal: JWT_SECRET environment variable is required")
+		return nil, fmt.Errorf("config error: JWT_SECRET environment variable is required")
+	}
+	if cfg.BcryptCost < 4 || cfg.BcryptCost > 31 {
+		return nil, fmt.Errorf("config error: BCRYPT_COST must be between 4 and 31, got %d", cfg.BcryptCost)
 	}
 
-	return &cfg, nil
+	log.Println("[Config] Loaded successfully.")
+
+	return cfg, nil
 }
 
 func getEnv(key, fallback string) string {

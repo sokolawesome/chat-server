@@ -16,15 +16,16 @@ type UserRepository interface {
 }
 
 type postgresUserRepository struct {
-	db *sql.DB
+	db         *sql.DB
+	bcryptCost int
 }
 
-func NewUserRepository(db *sql.DB) UserRepository {
-	return &postgresUserRepository{db: db}
+func NewUserRepository(db *sql.DB, bcryptCost int) UserRepository {
+	return &postgresUserRepository{db: db, bcryptCost: bcryptCost}
 }
 
 func (r *postgresUserRepository) CreateUser(ctx context.Context, username string, password string) (*models.User, error) {
-	hashedPasswordBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hashedPasswordBytes, err := bcrypt.GenerateFromPassword([]byte(password), r.bcryptCost)
 	if err != nil {
 		log.Printf("error hashing password: %v", err)
 		return nil, err
