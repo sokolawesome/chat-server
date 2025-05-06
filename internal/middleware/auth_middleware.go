@@ -63,7 +63,7 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		}
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			userIdF64, okSub := claims["sub"].(float64)
+			userIDF64, okSub := claims["sub"].(float64)
 			username, okUsr := claims["usr"].(string)
 			if !okSub {
 				err := errors.New("invalid token: missing or invalid userid (sub) claim")
@@ -78,11 +78,11 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 				return
 			}
 
-			userId := int64(userIdF64)
+			userID := int64(userIDF64)
 
-			ctx.Set(AuthorizationPayloadKey, userId)
+			ctx.Set(AuthorizationPayloadKey, userID)
 
-			log.Printf("auth success: user %d (%s) authorized", userId, username)
+			log.Printf("auth success: user %d (%s) authorized", userID, username)
 
 			ctx.Next()
 		} else {

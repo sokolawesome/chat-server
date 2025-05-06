@@ -41,24 +41,24 @@ func SetupRouter(cfg *config.Config, AuthHandler *handlers.AuthHandler) *gin.Eng
 		authorized.Use(middleware.AuthMiddleware(cfg.JwtSecret))
 		{
 			authorized.GET("/me", func(ctx *gin.Context) {
-				userIdAny, exist := ctx.Get(middleware.AuthorizationPayloadKey)
+				userIDAny, exist := ctx.Get(middleware.AuthorizationPayloadKey)
 				if !exist {
 					log.Println("userid not found in context")
 					ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not identify user"})
 					return
 				}
 
-				userId, ok := userIdAny.(int64)
+				userID, ok := userIDAny.(int64)
 				if !ok {
-					log.Printf("userid in context is not int64 (%T)", userIdAny)
+					log.Printf("userid in context is not int64 (%T)", userIDAny)
 					ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Could not identify user"})
 					return
 				}
 
-				log.Printf("/me endpoint accessed by user %d", userId)
+				log.Printf("/me endpoint accessed by user %d", userID)
 				ctx.JSON(http.StatusOK, gin.H{
 					"message": "Authentication successful",
-					"user_id": userId,
+					"user_id": userID,
 				})
 			})
 		}

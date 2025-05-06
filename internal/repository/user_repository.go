@@ -39,21 +39,21 @@ func (r *postgresUserRepository) CreateUser(ctx context.Context, username string
 
 	query := `INSERT INTO users (username, hashed_password)
     VALUES ($1, $2)
-    RETURNING id, created_time`
+    RETURNING id, created_at`
 
-	if err = r.db.QueryRowContext(ctx, query, username, hashedPassword).Scan(&user.ID, &user.CreatedTime); err != nil {
+	if err = r.db.QueryRowContext(ctx, query, username, hashedPassword).Scan(&user.ID, &user.CreatedAt); err != nil {
 		// check db errors later
 		log.Printf("error inserting user: %v", err)
 		return nil, err
 	}
 
-	log.Printf("user created successfully with id: %d", &user.ID)
+	log.Printf("user created successfully with id: %d", user.ID)
 	return user, nil
 }
 
 func (r *postgresUserRepository) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
 	user := &models.User{}
-	query := `SELECT id, username, hashed_password, created_time
+	query := `SELECT id, username, hashed_password, created_at
     FROM users
     WHERE username = $1`
 
@@ -61,7 +61,7 @@ func (r *postgresUserRepository) GetUserByUsername(ctx context.Context, username
 		&user.ID,
 		&user.Username,
 		&user.HashedPassword,
-		&user.CreatedTime,
+		&user.CreatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

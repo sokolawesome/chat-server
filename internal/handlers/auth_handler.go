@@ -14,16 +14,16 @@ import (
 )
 
 type AuthHandler struct {
-	UserRepository    repository.UserRepository
-	JwtSecret         string
-	JwtExpirationTime time.Duration
+	UserRepository        repository.UserRepository
+	JwtSecret             string
+	JwtExpirationDuration time.Duration
 }
 
-func NewAuthHandler(userRepository repository.UserRepository, jwtSecret string, jwtExpirationTime time.Duration) *AuthHandler {
+func NewAuthHandler(userRepository repository.UserRepository, jwtSecret string, jwtExpirationDuration time.Duration) *AuthHandler {
 	return &AuthHandler{
-		UserRepository:    userRepository,
-		JwtSecret:         jwtSecret,
-		JwtExpirationTime: jwtExpirationTime,
+		UserRepository:        userRepository,
+		JwtSecret:             jwtSecret,
+		JwtExpirationDuration: jwtExpirationDuration,
 	}
 }
 
@@ -97,6 +97,12 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 		return
 	}
 
+	if user == nil {
+		log.Printf("user with username '%s' not found (nil user returned from repo)", req.Username)
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
 	if err = bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(req.Password)); err != nil {
 		log.Printf("password for user '%s' is invalid", req.Username)
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
@@ -109,7 +115,7 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 		"sub": user.ID,
 		"usr": user.Username,
 		"iat": now.Unix(),
-		"exp": now.Add(h.JwtExpirationTime).Unix(),
+		"exp": now.Add(h.JwtExpirationDuration).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

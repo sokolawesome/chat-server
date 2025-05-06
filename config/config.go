@@ -8,21 +8,21 @@ import (
 )
 
 type Config struct {
-	ServerPort        string
-	DatabaseUrl       string
-	JwtSecret         string
-	JwtExpirationTime time.Duration
+	ServerPort            string
+	DatabaseURL           string
+	JwtSecret             string
+	JwtExpirationDuration time.Duration
 }
 
 func Load() (*Config, error) {
 	cfg := Config{
-		ServerPort:        getEnv("SERVER_PORT", "8080"),
-		DatabaseUrl:       getEnv("DATABASE_URL", ""),
-		JwtSecret:         getEnv("JWT_SECRET", ""),
-		JwtExpirationTime: time.Duration(getEnvAsInt("JWT_EXPIRATION_MINUTES", 60)) * time.Minute,
+		ServerPort:            getEnv("SERVER_PORT", "8080"),
+		DatabaseURL:           getEnv("DATABASE_URL", ""),
+		JwtSecret:             getEnv("JWT_SECRET", ""),
+		JwtExpirationDuration: time.Duration(getEnvAsInt("JWT_EXPIRATION_MINUTES", 60)) * time.Minute,
 	}
 
-	if cfg.DatabaseUrl == "" {
+	if cfg.DatabaseURL == "" {
 		log.Fatal("fatal: DATABASE_URL environment variable is required")
 	}
 	if cfg.JwtSecret == "" {

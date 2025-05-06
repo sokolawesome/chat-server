@@ -53,15 +53,15 @@ func handleWebSocket(ctx *gin.Context, cfg *config.Config) {
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		userIdF64, okSub := claims["sub"].(float64)
+		userIDF64, okSub := claims["sub"].(float64)
 		if !okSub {
 			log.Println("invalid token payload (missing/invalid sub claim)")
 			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token payload"})
 			ctx.Abort()
 			return
 		}
-		userId := int64(userIdF64)
-		log.Printf("user %d authorized for websocket connection", userId)
+		userID := int64(userIDF64)
+		log.Printf("user %d authorized for websocket connection", userID)
 	} else {
 		log.Println("invalid token (claims invalid or token marked invalid)")
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
@@ -71,7 +71,7 @@ func handleWebSocket(ctx *gin.Context, cfg *config.Config) {
 
 	conn, err := upgrader.Upgrade(ctx.Writer, ctx.Request, nil)
 	if err != nil {
-		log.Printf("failded to upgrade connection from %s: %v", ctx.Request.RemoteAddr, err)
+		log.Printf("failed to upgrade connection from %s: %v", ctx.Request.RemoteAddr, err)
 		return
 	}
 	defer func() {
@@ -113,7 +113,7 @@ func main() {
 		log.Fatalf("failed to load configuration: %v", err)
 	}
 
-	db, err := database.Connect(cfg.DatabaseUrl)
+	db, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
@@ -126,7 +126,7 @@ func main() {
 	}()
 
 	userRepository := repository.NewUserRepository(db)
-	authHandler := handlers.NewAuthHandler(userRepository, cfg.JwtSecret, cfg.JwtExpirationTime)
+	authHandler := handlers.NewAuthHandler(userRepository, cfg.JwtSecret, cfg.JwtExpirationDuration)
 	ginRouter := router.SetupRouter(cfg, authHandler)
 
 	ginRouter.GET("/ws", func(ctx *gin.Context) {
