@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -39,28 +39,35 @@ func (h *AuthHandler) Register(ctx *gin.Context) {
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		log.Printf("register validation error: %v", err)
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid body: " + err.Error()})
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
-	existingUser, err := h.UserRepository.GetUserByUsername(ctx.Request.Context(), req.Username)
-	if err != nil {
-		log.Printf("error checking existing user during registration: %v", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process registration"})
+	_, err := h.UserRepository.GetUserByUsername(ctx.Request.Context(), req.Username)
+	if err == nil {
+		log.Printf("registration attempt with existing username: %s", req.Username)
+		ctx.JSON(http.StatusConflict, gin.H{"error": "Username already taken"})
 		return
 	}
-	if existingUser != nil {
-		ctx.JSON(http.StatusConflict, gin.H{"error": "User with username already exist"})
+	if !errors.Is(err, repository.ErrUserNotFound) {
+		log.Printf("error checking existing user '%s' during registration: %v", req.Username, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process registration"})
 		return
 	}
 
 	newUser, err := h.UserRepository.CreateUser(ctx.Request.Context(), req.Username, req.Password)
 	if err != nil {
-		log.Printf("error creating user: %v", err)
+		if errors.Is(err, repository.ErrUsernameTaken) {
+			log.Printf("failed to create user, username '%s' already taken: %v", req.Username, err)
+			ctx.JSON(http.StatusConflict, gin.H{"error": "Username already taken"})
+			return
+		}
+		log.Printf("error creating user '%s': %v", req.Username, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 		return
 	}
 
+	log.Printf("user registered successfully: id=%d, username=%s", newUser.ID, newUser.Username)
 	ctx.JSON(http.StatusCreated, gin.H{
 		"message": "User registered successfully",
 		"user_id": newUser.ID,
@@ -73,9 +80,8 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token    string       `json:"token"`
-	User     *models.User `json:"user"`
-	Username string       `json:"username"`
+	Token string       `json:"token"`
+	User  *models.User `json:"user"`
 }
 
 func (h *AuthHandler) Login(ctx *gin.Context) {
@@ -83,30 +89,24 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		log.Printf("login validation error: %v", err)
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid body: " + err.Error()})
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
 	user, err := h.UserRepository.GetUserByUsername(ctx.Request.Context(), req.Username)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			log.Printf("user with username '%s' not found", req.Username)
+		if errors.Is(err, repository.ErrUserNotFound) {
+			log.Printf("login attempt for non-existent username: %s", req.Username)
 			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
 		}
-		log.Printf("error fetching user during login: %v", err)
+		log.Printf("error fetching user '%s' during login: %v", req.Username, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Login failed due to server error"})
 		return
 	}
 
-	if user == nil {
-		log.Printf("user with username '%s' not found (nil user returned from repo)", req.Username)
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-		return
-	}
-
 	if err = bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(req.Password)); err != nil {
-		log.Printf("password for user '%s' is invalid", req.Username)
+		log.Printf("invalid password attempt for username: %s", req.Username)
 		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
@@ -132,9 +132,8 @@ func (h *AuthHandler) Login(ctx *gin.Context) {
 	log.Printf("User %d (%s) logged in successfully", user.ID, user.Username)
 
 	response := LoginResponse{
-		Token:    tokenSigned,
-		User:     user,
-		Username: user.Username,
+		Token: tokenSigned,
+		User:  user,
 	}
 
 	ctx.JSON(http.StatusOK, response)

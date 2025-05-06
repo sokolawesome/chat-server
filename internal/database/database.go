@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -13,7 +14,7 @@ func Connect(cfg *config.Config) (*sql.DB, error) {
 
 	db, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("database.Connect: failed to open connection: %w", err)
 	}
 
 	db.SetMaxOpenConns(cfg.DbMaxOpenConns)
@@ -21,8 +22,10 @@ func Connect(cfg *config.Config) (*sql.DB, error) {
 	db.SetConnMaxLifetime(cfg.DbConnMaxLifetime)
 
 	if err = db.Ping(); err != nil {
-		db.Close()
-		return nil, err
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("database.Connect: error closing connection after ping failed: %v", closeErr)
+		}
+		return nil, fmt.Errorf("database.Connect: failed to ping database: %w", err)
 	}
 
 	log.Println("database connection established successfully")
